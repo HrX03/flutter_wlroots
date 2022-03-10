@@ -1,0 +1,12 @@
+{
+  "Numpad0": "KEY_INSERT",
+  "Numpad1": "KEY_END",
+  "Numpad2": "KEY_DOWN",
+  "Numpad3": "KEY_PAGEDOWN",
+  "Numpad4": "KEY_LEFT",
+  "Numpad6": "KEY_RIGHT",
+  "Numpad7": "KEY_HOME",
+  "Numpad8": "KEY_UP",
+  "Numpad9": "KEY_PAGEUP",
+  "NumpadPeriod": "KEY_DELETE"
+}
