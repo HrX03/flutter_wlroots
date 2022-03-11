@@ -8,5 +8,6 @@ fwr_src += files(
     'handle_map.cc',
     'messages.c',
     'output.c',
+    'platform_channel.c',
     'surface.c',
 )

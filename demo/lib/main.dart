@@ -55,12 +55,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  static const BasicMessageChannel<Object?> keyEvent =
-      BasicMessageChannel<Object?>(
-    'flutter/keyevent',
-    JSONMessageCodec(),
-  );
-
   int _counter = 0;
   Surface? surface;
 
@@ -76,21 +70,6 @@ class _MyHomePageState extends State<MyHomePage> {
           surface = null;
         });
       }
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    SystemChannels.keyEvent.setMessageHandler((message) async {
-      stdout.writeln(message);
-      return null;
-    });
-    /* platform.addHandler("flutter/keyevent", (call) async {
-      print('got event: ${call.arguments}');
-    }); */
-    RawKeyboard.instance.addListener((event) {
-      stdout.writeln(event);
     });
   }
 
@@ -121,13 +100,11 @@ class _MyHomePageState extends State<MyHomePage> {
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
     return Focus(
-      onFocusChange: (value) {
-        stdout.writeln(value);
-      },
       onKeyEvent: (node, event) {
         stdout.writeln(event);
-        return KeyEventResult.ignored;
+        return KeyEventResult.handled;
       },
+      autofocus: true,
       child: Scaffold(
         appBar: AppBar(
           // Here we take the value from the MyHomePage object that was created by

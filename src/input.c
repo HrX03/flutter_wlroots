@@ -24,6 +24,7 @@
 #include "constants.h"
 #include "handle_map.h"
 #include "messages.h"
+#include "platform_channel.h"
 
 #define NS_PER_MS 1000000
 
@@ -562,37 +563,11 @@ static uint64_t apply_id_plane(uint64_t logical_id, uint64_t plane) {
   return (logical_id & kValueMask) | plane;
 }
 
-static void send_key_to_flutter(struct fwr_keyboard *keyboard, struct wlr_event_keyboard_key *event, FlutterKeyEventType key_event_type) {
+static void send_key_to_flutter(struct fwr_keyboard *keyboard, struct wlr_event_keyboard_key *event) {
   struct fwr_instance *instance = keyboard->instance;
-  /* struct message_builder msg = message_builder_new();
-  struct message_builder_segment msg_seg = message_builder_segment(&msg);
-  message_builder_segment_push_string(&msg_seg, "flutter/keyevent");
-  message_builder_segment_finish(&msg_seg);
-
-  msg_seg = message_builder_segment(&msg);
-  struct message_builder_segment arg_seg = message_builder_segment_push_map(&msg_seg, 3);
-  message_builder_segment_push_string(&arg_seg, "keymap");
-  message_builder_segment_push_string(&arg_seg, "wlroots");
-  message_builder_segment_push_string(&arg_seg, "keyCode");
-  message_builder_segment_push_int64(&arg_seg, event->keycode);
-  message_builder_segment_push_string(&arg_seg, "type");
-  message_builder_segment_push_string(&arg_seg, key_event_type);
-  message_builder_segment_finish(&arg_seg);
-
-  message_builder_segment_finish(&msg_seg);
-  uint8_t *msg_buf;
-  size_t msg_buf_len;
-  message_builder_finish(&msg, &msg_buf, &msg_buf_len); */
 
   FlutterPlatformMessageResponseHandle *response_handle;
   instance->fl_proc_table.PlatformMessageCreateResponseHandle(instance->engine, cb, NULL, &response_handle);
-
-  /* FlutterPlatformMessage platform_message = {};
-  platform_message.struct_size = sizeof(FlutterPlatformMessage);
-  platform_message.channel = "wlroots";
-  platform_message.message = msg_buf;
-  platform_message.message_size = msg_buf_len;
-  platform_message.response_handle = response_handle; */
 
 	uint32_t keycode = event->keycode + 8;
   xkb_keysym_t codepoint = xkb_state_key_get_one_sym(
@@ -611,15 +586,63 @@ static void send_key_to_flutter(struct fwr_keyboard *keyboard, struct wlr_event_
 
   wlr_log(WLR_INFO, "%d", keycode);
 
+  char *type;
+  FlutterKeyEventType flType;
+
+  switch(event->state) {
+    case WL_KEYBOARD_KEY_STATE_PRESSED:
+      type = "keydown";
+      flType = kFlutterKeyEventTypeDown;
+      break;
+    case WL_KEYBOARD_KEY_STATE_RELEASED:
+    default:
+      type = "keyup";
+      flType = kFlutterKeyEventTypeUp;
+      break;
+  }
+
   FlutterKeyEvent key_event = {};
   key_event.struct_size = sizeof(FlutterKeyEvent);
-  key_event.type = key_event_type;
+  key_event.type = flType;
   key_event.physical = 0x00070004;//codepoint;
   key_event.logical = apply_id_plane(0x041, kUnicodePlane);//65;
-  key_event.character = key_event_type == kFlutterKeyEventTypeDown ? buffer : NULL;
+  key_event.character = flType == kFlutterKeyEventTypeDown ? buffer : NULL;
   key_event.timestamp = instance->fl_proc_table.GetCurrentTime();
   key_event.synthesized = false;
   instance->fl_proc_table.SendKeyEvent(instance->engine, &key_event, cb, response_handle);
+
+  platch_send(
+    instance,
+    "flutter/keyevent",
+    &(struct platch_obj) {
+      .codec = kJSONMessageCodec,
+      .json_value = {
+        .type = kJsonObject,
+        .size = 7,
+        .keys = (char*[7]) {
+          "keymap",
+          "toolkit",
+          "unicodeScalarValues",
+          "keyCode",
+          "scanCode",
+          "modifiers",
+          "type"
+        },
+        .values = (struct json_value[7]) {
+          /* keymap */                {.type = kJsonString, .string_value = "linux"},
+          /* toolkit */               {.type = kJsonString, .string_value = "gtk"},
+          /* unicodeScalarValues */   {.type = kJsonNumber, .number_value = (flType == kFlutterKeyEventTypeDown ? 0x0410 : 0x0)},
+          /* keyCode */               {.type = kJsonNumber, .number_value = apply_id_plane(0x041, kUnicodePlane)},
+          /* scanCode */              {.type = kJsonNumber, .number_value = 0x00070004},
+          /* modifiers */             {.type = kJsonNumber, .number_value = 0x0},
+          /* type */                  {.type = kJsonString, .string_value = type}
+        }
+      }
+    },
+    kJSONMessageCodec,
+    NULL,
+    NULL
+  );
   //instance->fl_proc_table.SendPlatformMessage(instance->engine, &platform_message);
 }
 
@@ -660,19 +683,8 @@ static void keyboard_handle_key(
   int nsyms = xkb_state_key_get_syms(keyboard->device->keyboard->xkb_state, keycode, &syms); */
 
   //bool handled = false;
-  FlutterKeyEventType type;
 
-  switch(event->state) {
-    case WL_KEYBOARD_KEY_STATE_PRESSED:
-      type = kFlutterKeyEventTypeDown;
-      break;
-    case WL_KEYBOARD_KEY_STATE_RELEASED:
-    default:
-      type = kFlutterKeyEventTypeUp;
-      break;
-  }
-
-  send_key_to_flutter(keyboard, event, type);
+  send_key_to_flutter(keyboard, event);
   //send_key_to_flutter(keyboard, event, kFlutterKeyEventTypeUp);
 
   // uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
