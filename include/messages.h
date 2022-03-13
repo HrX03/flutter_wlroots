@@ -17,6 +17,15 @@ struct surface_pointer_event_message {
 
 bool decode_surface_pointer_event_message(struct dart_value *value, struct surface_pointer_event_message *out);
 
+struct surface_keyboard_key_message {
+    uint32_t surface_handle;
+    uint64_t keycode;
+    uint8_t event_type;
+    int64_t timestamp;
+};
+
+bool decode_surface_keyboard_key_message(struct dart_value *value, struct surface_keyboard_key_message *out);
+
 struct surface_toplevel_set_size_message {
     uint32_t surface_handle;
     int64_t size_x;

@@ -3,6 +3,7 @@ fwr_src += files(
     'shaders.c',
     'renderer.c',
     'input.c',
+    'key_mapping.cc',
     'task.c',
     'standard_message_codec.c',
     'handle_map.cc',

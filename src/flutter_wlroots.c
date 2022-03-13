@@ -131,26 +131,31 @@ static void engine_cb_platform_message(
 
   struct dart_value name = {};
   struct dart_value args = {};
-  size_t offset = 0;
-
-  if (!message_read(engine_message->message, engine_message->message_size, &offset, &name)) {
-    wlr_log(WLR_ERROR, "Error decoding platform message name");
-    goto error;
-  }
-
-  if (!message_read(engine_message->message, engine_message->message_size, &offset, &args)) {
-    wlr_log(WLR_ERROR, "Error decoding platform message args");
-    goto error;
-  }
-
-  if (name.type != dvString) {
-    goto error;
-  }
-  const char *method_name = name.string.string;
 
   if (strcmp(engine_message->channel, "wlroots") == 0) {
+    size_t offset = 0;
+
+    if (!message_read(engine_message->message, engine_message->message_size, &offset, &name)) {
+      wlr_log(WLR_ERROR, "Error decoding platform message name");
+      goto error;
+    }
+
+    if (!message_read(engine_message->message, engine_message->message_size, &offset, &args)) {
+      wlr_log(WLR_ERROR, "Error decoding platform message args");
+      goto error;
+    }
+
+    if (name.type != dvString) {
+      goto error;
+    }
+    const char *method_name = name.string.string;
+    
     if (strcmp(method_name, "surface_pointer_event") == 0) {
       fwr_handle_surface_pointer_event_message(instance, engine_message->response_handle, &args);
+      return;
+    }
+    if (strcmp(method_name, "surface_keyboard_key") == 0) {
+      fwr_handle_surface_keyboard_key_message(instance, engine_message->response_handle, &args);
       return;
     }
     if (strcmp(method_name, "surface_toplevel_set_size") == 0) {
@@ -164,7 +169,7 @@ static void engine_cb_platform_message(
 
 error:
   // TODO(hansihe): Handle messages
-  wlr_log(WLR_INFO, "Unhandled platform message: channel: %s; name: %s", engine_message->channel, method_name);
+  wlr_log(WLR_INFO, "Unhandled platform message: channel: %s", engine_message->channel);
 
   message_free(&name);
   message_free(&args);

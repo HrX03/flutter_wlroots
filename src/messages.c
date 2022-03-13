@@ -61,6 +61,22 @@ bool decode_surface_pointer_event_message(struct dart_value *value, struct surfa
     return true;
 }
 
+bool decode_surface_keyboard_key_message(struct dart_value *value, struct surface_keyboard_key_message *out) {
+    if (value->type != dvList) {
+        return false;
+    }
+    if (value->list.length != 4) {
+        return false;
+    }
+
+    DECODE_INTEGER(out->surface_handle, &value->list.values[0]);
+    DECODE_INTEGER(out->keycode, &value->list.values[1]);
+    DECODE_INTEGER(out->event_type, &value->list.values[2]);
+    DECODE_INTEGER(out->timestamp, &value->list.values[3]);
+
+    return true;
+}
+
 bool decode_surface_toplevel_set_size_message(struct dart_value *value, struct surface_toplevel_set_size_message *out) {
     if (value->type != dvList) {
         return false;

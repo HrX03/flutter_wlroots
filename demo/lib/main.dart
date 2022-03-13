@@ -1,6 +1,3 @@
-import 'dart:developer';
-import 'dart:io';
-
 import 'package:compositor_dart/compositor_dart.dart';
 import 'package:compositor_dart/surface.dart';
 import 'package:flutter/material.dart';
@@ -101,8 +98,29 @@ class _MyHomePageState extends State<MyHomePage> {
     // than having to individually change instances of widgets.
     return Focus(
       onKeyEvent: (node, event) {
-        stdout.writeln(event);
-        return KeyEventResult.handled;
+        print(event);
+        final KeyStatus status;
+
+        if (event is KeyDownEvent) {
+          status = KeyStatus.pressed;
+        } else {
+          status = KeyStatus.released;
+        }
+
+        int? keycode = phyisicalToXkbMap[event.physicalKey.usbHidUsage];
+
+        if (keycode != null) {
+          compositor.platform.surfaceSendKey(
+            surface!,
+            keycode,
+            status,
+            event.timeStamp,
+          );
+
+          return KeyEventResult.handled;
+        }
+
+        return KeyEventResult.ignored;
       },
       autofocus: true,
       child: Scaffold(

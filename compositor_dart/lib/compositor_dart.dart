@@ -68,6 +68,19 @@ class _CompositorPlatform {
         "surface_toplevel_set_size", [surface.handle, width, height]);
   }
 
+  Future<void> surfaceSendKey(Surface surface, int keycode, KeyStatus status,
+      Duration timestamp) async {
+    await channel.invokeListMethod(
+      "surface_keyboard_key",
+      [
+        surface.handle,
+        keycode,
+        status.index,
+        timestamp.inMicroseconds,
+      ],
+    );
+  }
+
   Future<void> clearFocus(Surface surface) async {
     await channel.invokeMethod("surface_clear_focus", [surface.handle]);
   }
@@ -126,4 +139,9 @@ class Compositor {
       print('got event: ${call.arguments["type"]}');
     });
   }
+}
+
+enum KeyStatus {
+  released,
+  pressed,
 }

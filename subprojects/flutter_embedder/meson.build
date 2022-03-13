@@ -16,7 +16,7 @@ embedder_archive_url = 'https://storage.googleapis.com/flutter_infra_release/flu
 embedder_archive_path = 'linux-x64-embedder.zip'
 embedder_path = 'linux-x64-embedder'
 
-run_command('python', 'meson_file_download.py', embedder_archive_url, embedder_archive_path, '-hash', 'sha256', embedder_sha256, check: true)
+run_command('python', 'meson_file_download.py', embedder_archive_url, embedder_archive_path, check: true)
 run_command('python', 'meson_file_extract.py', embedder_archive_path, embedder_path, check: true)
 
 cc = meson.get_compiler('c')
