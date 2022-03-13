@@ -17,6 +17,11 @@
 #include <xkbcommon/xkbcommon-compose.h>
 #include <stdlib.h>
 #include <locale.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <regex.h>
+#include <stdio.h>
+#include <fcntl.h>
 
 #include "input.h"
 #include "shaders.h"
@@ -344,6 +349,182 @@ static void keyboard_destroy(struct wl_listener *listener, void *data) {
 	free(keyboard);
 }
 
+static int find_var_offset_in_string(const char *varname, const char *buffer, regmatch_t *match) {
+    regmatch_t matches[2];
+    char *pattern;
+    int ok;
+
+    ok = asprintf(&pattern, "%s=\"([^\"]*)\"", varname);
+    if (ok < 0) {
+        ok = ENOMEM;
+        goto fail_set_match;
+    }
+
+    regex_t regex;
+    ok = regcomp(&regex, pattern, REG_EXTENDED);
+    if (ok != 0) {
+        //pregexerr("regcomp", ok, &regex);
+        ok = EINVAL;
+        goto fail_set_match;
+    }
+
+    ok = regexec(&regex, buffer, 2, matches, 0);
+    if (ok == REG_NOMATCH) {
+        ok = EINVAL;
+        goto fail_free_regex;
+    }
+
+    if (match != NULL) {
+        *match = matches[1];
+    }
+
+    return 0;
+
+    fail_free_regex:
+    regfree(&regex);
+
+    fail_set_match:
+    if (match != NULL) {
+        match->rm_so = -1;
+        match->rm_eo = -1;
+    }
+    return ok;
+}
+
+static char *get_value_allocated(const char *varname, const char *buffer) {
+    regmatch_t match;
+    char *allocated;
+    int ok, match_length;
+
+    ok = find_var_offset_in_string(varname, buffer, &match);
+    if (ok != 0) {
+        errno = ok;
+        return NULL;
+    } else if ((match.rm_so == -1) || (match.rm_eo == -1)) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    match_length = match.rm_eo - match.rm_so;
+
+    allocated = malloc(match_length + 1);
+    if (allocated == NULL) {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    strncpy(allocated, buffer + match.rm_so, match_length);
+    
+    allocated[match_length] = '\0';
+    
+    return allocated;
+}
+
+static char *load_file(const char *path) {
+    struct stat s;
+    int ok, fd;
+    
+    ok = open(path, O_RDONLY);
+    if (ok < 0) {
+        goto fail_return_null;
+    } else {
+        fd = ok;
+    }
+
+    ok = fstat(fd, &s);
+    if (ok < 0) {
+        goto fail_close;
+    }
+
+    char *buffer = malloc(s.st_size + 1);
+    if (buffer == NULL) {
+        errno = ENOMEM;
+        goto fail_close;
+    }
+
+    int result = read(fd, buffer, s.st_size);
+    if (result < 0) {
+        goto fail_close;
+    } else if (result == 0) {
+        errno = EINVAL;
+        goto fail_close;
+    } else if (result < s.st_size) {
+        errno = EINVAL;
+        goto fail_close;
+    }
+
+    close(fd);
+
+    buffer[s.st_size] = '\0';
+
+    return buffer;
+
+
+    fail_close:
+    close(fd);
+
+    fail_return_null:
+    return NULL;
+}
+
+static struct xkb_keymap *load_default_keymap(struct xkb_context *context) {
+    struct xkb_keymap *keymap;
+    char *file, *xkbmodel, *xkblayout, *xkbvariant, *xkboptions; 
+
+    file = load_file("/etc/default/keyboard");
+    if (file == NULL) {
+        wlr_log(WLR_ERROR, "Could not load keyboard configuration from \"/etc/default/keyboard\". Default keyboard config will be used. load_file: %s\n", strerror(errno));
+        xkbmodel = NULL;
+        xkblayout = NULL;
+        xkbvariant = NULL;
+        xkboptions = NULL;
+    } else {
+        // we have a config file, load its properties
+        xkbmodel = get_value_allocated("XKBMODEL", file);
+        if (xkbmodel == NULL) {
+            wlr_log(WLR_ERROR, "Could not find \"XKBMODEL\" property inside \"/etc/default/keyboard\". Default value will be used.");
+        }
+
+        xkblayout = get_value_allocated("XKBLAYOUT", file);
+        if (xkblayout == NULL) {
+            wlr_log(WLR_ERROR, "Could not find \"XKBLAYOUT\" property inside \"/etc/default/keyboard\". Default value will be used.");
+        }
+
+        xkbvariant = get_value_allocated("XKBVARIANT", file);
+        if (xkbvariant == NULL) {
+            wlr_log(WLR_ERROR, "Could not find \"XKBVARIANT\" property inside \"/etc/default/keyboard\". Default value will be used.");
+        }
+
+        xkboptions = get_value_allocated("XKBOPTIONS", file);
+        if (xkboptions == NULL) {
+            wlr_log(WLR_ERROR, "Could not find \"XKBOPTIONS\" property inside \"/etc/default/keyboard\". Default value will be used.");
+        }
+
+        free(file);
+    }
+
+    struct xkb_rule_names names = {
+        .rules = NULL,
+        .model = xkbmodel,
+        .layout = xkblayout,
+        .variant = xkbvariant,
+        .options = xkboptions
+    };
+
+    keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+    if (xkbmodel != NULL) free(xkbmodel);
+    if (xkblayout != NULL) free(xkblayout);
+    if (xkbvariant != NULL) free(xkbvariant);
+    if (xkboptions != NULL) free(xkboptions);
+
+    if (keymap == NULL) {
+        wlr_log(WLR_ERROR, "Could not create xkb keymap.");
+    }
+
+    return keymap;
+}
+
 static void server_new_keyboard(struct fwr_instance *instance,
 		struct wlr_input_device *device) {
 
@@ -358,15 +539,15 @@ static void server_new_keyboard(struct fwr_instance *instance,
 		exit(1);
 	}
 
-  struct xkb_rule_names rules = { 0 };
-	rules.rules = getenv("XKB_DEFAULT_RULES");
-	rules.model = getenv("XKB_DEFAULT_MODEL");
-	rules.layout = getenv("XKB_DEFAULT_LAYOUT");
-	rules.variant = getenv("XKB_DEFAULT_VARIANT");
-	rules.options = getenv("XKB_DEFAULT_OPTIONS");
-  struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+  struct xkb_keymap *keymap = load_default_keymap(context);
 
-  keyboard->compose_state = xkb_compose_state_new(xkb_compose_table_new_from_locale(context, setlocale(LC_CTYPE, NULL), XKB_COMPOSE_COMPILE_NO_FLAGS), XKB_COMPOSE_STATE_NO_FLAGS);
+  setlocale(LC_ALL, "");
+  keyboard->compose_state = xkb_compose_state_new(
+      xkb_compose_table_new_from_locale(
+          context,
+          setlocale(LC_CTYPE, NULL), XKB_COMPOSE_COMPILE_NO_FLAGS
+      ),
+      XKB_COMPOSE_STATE_NO_FLAGS);
   if (keyboard->compose_state == NULL) {
     wlr_log(WLR_ERROR, "Could not create new XKB compose state.\n");
     //goto fail_free_plain_xkb_state;
