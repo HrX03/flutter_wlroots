@@ -38,23 +38,23 @@
 
 static uint32_t uapi_mouse_button_to_flutter(uint32_t uapi_button) {
   switch (uapi_button) {
-    case 0x110: return 1; // BTN_LEFT
-    case 0x111: return 2; // BTN_RIGHT
-    case 0x112: return 3; // BTN_MIDDLE
-    case 0x116: return 4; // BTN_BACK
-    case 0x115: return 5; // BTN_FORWARD
-    case 0x113: return 6; // BTN_SIDE
-    case 0x114: return 7; // BTN_EXTRA
-    case 0x100: return 8; // BTN_0
-    case 0x101: return 9; // BTN_1
-    case 0x102: return 10; // BTN_2
-    case 0x103: return 11; // BTN_3
-    case 0x104: return 12; // BTN_4
-    case 0x105: return 13; // BTN_5
-    case 0x106: return 14; // BTN_6
-    case 0x107: return 15; // BTN_7
-    case 0x108: return 16; // BTN_8
-    case 0x109: return 17; // BTN_9
+    case BTN_LEFT: return 1;
+    case BTN_RIGHT: return 2;
+    case BTN_MIDDLE: return 3;
+    case BTN_BACK: return 4;
+    case BTN_FORWARD: return 5;
+    case BTN_SIDE: return 6;
+    case BTN_EXTRA: return 7;
+    case BTN_0: return 8;
+    case BTN_1: return 9;
+    case BTN_2: return 10;
+    case BTN_3: return 11;
+    case BTN_4: return 12;
+    case BTN_5: return 13;
+    case BTN_6: return 14;
+    case BTN_7: return 15;
+    case BTN_8: return 16;
+    case BTN_9: return 17;
     default: return 0;
   }
 }
@@ -131,34 +131,14 @@ static void on_server_cursor_button(struct wl_listener *listener, void *data) {
 
   uint32_t last_mask = instance->input.mouse_button_mask;
 
-  uint32_t fl_button;// = uapi_mouse_button_to_flutter(event->button);
-  switch(event->button) {
-    case BTN_LEFT:
-      fl_button = kFlutterPointerButtonMousePrimary;
-      break;
-    case BTN_RIGHT:
-      fl_button = kFlutterPointerButtonMouseSecondary;
-      break;
-    case BTN_MIDDLE:
-      fl_button = kFlutterPointerButtonMouseMiddle;
-      break;
-    case BTN_BACK:
-      fl_button = kFlutterPointerButtonMouseBack;
-      break;
-    case BTN_FORWARD:
-      fl_button = kFlutterPointerButtonMouseForward;
-      break;
-    default:
-      fl_button = 0;
-      break;
-  }
+  uint32_t fl_button = uapi_mouse_button_to_flutter(event->button);
   
   if (fl_button != 0) {
-    //uint32_t mask = 1 >> (fl_button - 1);
+    uint32_t mask = 1 << (fl_button - 1);
     if (event->state == WLR_BUTTON_PRESSED) {
-      instance->input.mouse_button_mask |= fl_button;
+      instance->input.mouse_button_mask |= mask;
     } else if (event->state == WLR_BUTTON_RELEASED) {
-      instance->input.mouse_button_mask &= ~fl_button;
+      instance->input.mouse_button_mask &= ~mask;
     }
   }
   uint32_t curr_mask = instance->input.mouse_button_mask;
@@ -767,28 +747,31 @@ void fwr_handle_surface_pointer_event_message(struct fwr_instance *instance, con
 
   double transformed_local_pos_x = message.local_pos_x / message.widget_size_x * surface_state->width;
   double transformed_local_pos_y = message.local_pos_y / message.widget_size_y * surface_state->height;
-  int button;
+  uint32_t diff_mask = instance->input.fl_mouse_button_mask ^ message.buttons;
+  uint32_t buttons;
 
-  switch(message.buttons) {
+  switch(diff_mask) {
     case kFlutterPointerButtonMousePrimary:
-      button = BTN_LEFT;
+      buttons = BTN_LEFT;
       break;
     case kFlutterPointerButtonMouseSecondary:
-      button = BTN_RIGHT;
+      buttons = BTN_RIGHT;
       break;
     case kFlutterPointerButtonMouseMiddle:
-      button = BTN_MIDDLE;
+      buttons = BTN_MIDDLE;
       break;
     case kFlutterPointerButtonMouseBack:
-      button = BTN_BACK;
+      buttons = BTN_BACK;
       break;
     case kFlutterPointerButtonMouseForward:
-      button = BTN_FORWARD;
+      buttons = BTN_FORWARD;
       break;
     default:
-      button = 0;
+      buttons = 0;
       break;
   }
+
+  instance->input.fl_mouse_button_mask = message.buttons;
 
   double amount;
   enum wlr_axis_orientation orientation;
@@ -810,10 +793,10 @@ void fwr_handle_surface_pointer_event_message(struct fwr_instance *instance, con
     case pointerKindMouse: {
       switch (message.event_type) {
         case pointerDownEvent:
-          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, button, WLR_BUTTON_PRESSED);
+          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, buttons, WLR_BUTTON_PRESSED);
           break;
         case pointerUpEvent:
-          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, button, WLR_BUTTON_RELEASED);
+          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, buttons, WLR_BUTTON_RELEASED);
           break;
         case pointerHoverEvent:
         case pointerEnterEvent:
@@ -823,7 +806,7 @@ void fwr_handle_surface_pointer_event_message(struct fwr_instance *instance, con
           break;
         }
         case pointerScrollEvent: {
-          wlr_seat_pointer_notify_axis(instance->seat, message.timestamp / NS_PER_MS, orientation, amount, discrete, WLR_AXIS_SOURCE_CONTINUOUS);
+          wlr_seat_pointer_notify_axis(instance->seat, message.timestamp / NS_PER_MS, orientation, amount, discrete, WLR_AXIS_SOURCE_WHEEL);
           break;
         }
         case pointerExitEvent: {

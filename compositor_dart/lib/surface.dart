@@ -175,6 +175,8 @@ class _CompositorPlatformViewController extends PlatformViewController {
       eventType = pointerUnknownEvent;
     }
 
+    print(event.buttons);
+
     List data = [
       surface.handle,
       event.buttons,
