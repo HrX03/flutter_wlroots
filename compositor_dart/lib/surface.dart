@@ -57,6 +57,7 @@ class SurfaceView extends StatefulWidget {
 
 class _SurfaceViewState extends State<SurfaceView> {
   late _CompositorPlatformViewController controller;
+  final FocusNode node = FocusNode();
 
   @override
   void initState() {
@@ -79,8 +80,10 @@ class _SurfaceViewState extends State<SurfaceView> {
       onPointerSignal: (event) {
         controller.dispatchPointerEvent(event);
       },
-      child: Focus(
-        onKeyEvent: (node, event) {
+      child: KeyboardListener(
+        focusNode: node,
+        autofocus: true,
+        onKeyEvent: (event) {
           final KeyStatus status;
 
           if (event is KeyDownEvent) {
@@ -98,11 +101,7 @@ class _SurfaceViewState extends State<SurfaceView> {
               status,
               event.timeStamp,
             );
-
-            return KeyEventResult.handled;
           }
-
-          return KeyEventResult.ignored;
         },
         child: _MeasureSize(
           onChange: (size) {
@@ -174,8 +173,6 @@ class _CompositorPlatformViewController extends PlatformViewController {
     } else {
       eventType = pointerUnknownEvent;
     }
-
-    print(event.buttons);
 
     List data = [
       surface.handle,

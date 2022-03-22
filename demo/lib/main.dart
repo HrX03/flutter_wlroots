@@ -96,38 +96,10 @@ class _MyHomePageState extends State<MyHomePage> {
     // The Flutter framework has been optimized to make rerunning build methods
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
-    return Focus(
-      onKeyEvent: (node, event) {
-        print(event);
-        final KeyStatus status;
-
-        if (event is KeyDownEvent) {
-          status = KeyStatus.pressed;
-        } else {
-          status = KeyStatus.released;
-        }
-
-        int? keycode = phyisicalToXkbMap[event.physicalKey.usbHidUsage];
-
-        if (keycode != null) {
-          compositor.platform.surfaceSendKey(
-            surface!,
-            keycode,
-            status,
-            event.timeStamp,
-          );
-
-          return KeyEventResult.handled;
-        }
-
-        return KeyEventResult.ignored;
-      },
-      autofocus: true,
-      child: Container(
-        color: Colors.amber,
-        padding: const EdgeInsets.all(8.0),
-        child: SizedBox(width: 500, height: 500, child: surfaceView),
-      ),
+    return Container(
+      color: Colors.amber,
+      padding: const EdgeInsets.all(8.0),
+      child: SizedBox(width: 500, height: 500, child: surfaceView),
     );
   }
 }

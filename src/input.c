@@ -59,29 +59,6 @@ static uint32_t uapi_mouse_button_to_flutter(uint32_t uapi_button) {
   }
 }
 
-static uint32_t flutter_mouse_button_to_uapi(uint32_t uapi_button) {
-  switch (uapi_button) {
-    case 1: return 0x110; // BTN_LEFT
-    case 2: return 0x111; // BTN_RIGHT
-    case 3: return 0x112; // BTN_MIDDLE
-    case 4: return 0x116; // BTN_BACK
-    case 5: return 0x115; // BTN_FORWARD
-    case 6: return 0x113; // BTN_SIDE
-    case 7: return 0x114; // BTN_EXTRA
-    case 8: return 0x100; // BTN_0
-    case 9: return 0x101; // BTN_1
-    case 10: return 0x102; // BTN_2
-    case 11: return 0x103; // BTN_3
-    case 12: return 0x104; // BTN_4
-    case 13: return 0x105; // BTN_5
-    case 14: return 0x106; // BTN_6
-    case 15: return 0x107; // BTN_7
-    case 16: return 0x108; // BTN_8
-    case 17: return 0x109; // BTN_9
-    default: return 0;
-  }
-}
-
 static void process_cursor_motion(struct fwr_instance *instance, uint32_t time) {
   wlr_xcursor_manager_set_cursor_image(instance->cursor_mgr, "left_ptr",
                                        instance->cursor);
@@ -274,8 +251,6 @@ static void send_key_to_flutter(struct fwr_keyboard *keyboard, struct wlr_event_
   } else if (compose_status == XKB_COMPOSE_CANCELLED) {
     xkb_compose_state_reset(keyboard->compose_state);
   }
-
-  wlr_log(WLR_INFO, "%d", scan_code);
 
   char *type;
   FlutterKeyEventType flType;
@@ -747,72 +722,71 @@ void fwr_handle_surface_pointer_event_message(struct fwr_instance *instance, con
 
   double transformed_local_pos_x = message.local_pos_x / message.widget_size_x * surface_state->width;
   double transformed_local_pos_y = message.local_pos_y / message.widget_size_y * surface_state->height;
-  uint32_t diff_mask = instance->input.fl_mouse_button_mask ^ message.buttons;
-  uint32_t buttons;
 
-  switch(diff_mask) {
+  double scroll_amount;
+  enum wlr_axis_orientation scroll_orientation;
+
+  if (message.scroll_delta_x != 0 && message.scroll_delta_y == 0) {
+    scroll_amount = message.scroll_delta_x;
+    scroll_orientation = WLR_AXIS_ORIENTATION_HORIZONTAL;
+  } else if (message.scroll_delta_x == 0 && message.scroll_delta_y != 0) {
+    scroll_amount = message.scroll_delta_y;
+    scroll_orientation = WLR_AXIS_ORIENTATION_VERTICAL;
+  } else {
+    scroll_amount = 0;
+    scroll_orientation = WLR_AXIS_ORIENTATION_VERTICAL;
+  }
+
+  int32_t discrete_scroll_amount = scroll_amount >= 0 ? 1 : -1;
+  
+  enum wlr_button_state button_state = message.buttons > instance->input.fl_mouse_button_mask
+      ? WLR_BUTTON_PRESSED
+      : WLR_BUTTON_RELEASED;
+  uint32_t mouse_diff_mask = instance->input.fl_mouse_button_mask ^ message.buttons;
+  uint32_t mouse_button;
+
+  switch(mouse_diff_mask) {
     case kFlutterPointerButtonMousePrimary:
-      buttons = BTN_LEFT;
+      mouse_button = BTN_LEFT;
       break;
     case kFlutterPointerButtonMouseSecondary:
-      buttons = BTN_RIGHT;
+      mouse_button = BTN_RIGHT;
       break;
     case kFlutterPointerButtonMouseMiddle:
-      buttons = BTN_MIDDLE;
+      mouse_button = BTN_MIDDLE;
       break;
     case kFlutterPointerButtonMouseBack:
-      buttons = BTN_BACK;
+      mouse_button = BTN_BACK;
       break;
     case kFlutterPointerButtonMouseForward:
-      buttons = BTN_FORWARD;
+      mouse_button = BTN_FORWARD;
       break;
     default:
-      buttons = 0;
+      mouse_button = 0;
       break;
   }
 
   instance->input.fl_mouse_button_mask = message.buttons;
 
-  double amount;
-  enum wlr_axis_orientation orientation;
-
-  if (message.scroll_delta_x != 0 && message.scroll_delta_y == 0) {
-    amount = message.scroll_delta_x;
-    orientation = WLR_AXIS_ORIENTATION_HORIZONTAL;
-  } else if (message.scroll_delta_x == 0 && message.scroll_delta_y != 0) {
-    amount = message.scroll_delta_y;
-    orientation = WLR_AXIS_ORIENTATION_VERTICAL;
-  } else {
-    amount = 0;
-    orientation = WLR_AXIS_ORIENTATION_VERTICAL;
-  }
-
-  int32_t discrete = amount >= 0 ? 1 : -1;
-
   switch (message.device_kind) {
     case pointerKindMouse: {
-      switch (message.event_type) {
-        case pointerDownEvent:
-          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, buttons, WLR_BUTTON_PRESSED);
-          break;
-        case pointerUpEvent:
-          wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, buttons, WLR_BUTTON_RELEASED);
-          break;
-        case pointerHoverEvent:
-        case pointerEnterEvent:
-        case pointerMoveEvent: {
-          wlr_seat_pointer_notify_enter(instance->seat, view->surface->surface, transformed_local_pos_x, transformed_local_pos_y);
-          wlr_seat_pointer_notify_motion(instance->seat, message.timestamp / NS_PER_MS, transformed_local_pos_x, transformed_local_pos_y);
-          break;
-        }
-        case pointerScrollEvent: {
-          wlr_seat_pointer_notify_axis(instance->seat, message.timestamp / NS_PER_MS, orientation, amount, discrete, WLR_AXIS_SOURCE_WHEEL);
-          break;
-        }
-        case pointerExitEvent: {
-          wlr_seat_pointer_clear_focus(instance->seat);
-          break;
-        }
+      if(message.event_type == pointerEnterEvent) {
+        wlr_seat_pointer_notify_enter(instance->seat, view->surface->surface, transformed_local_pos_x, transformed_local_pos_y);
+      } else if(message.event_type == pointerExitEvent) {
+        wlr_seat_pointer_clear_focus(instance->seat);
+      }
+
+      if(mouse_button != 0) {
+        wlr_seat_pointer_notify_button(instance->seat, message.timestamp / NS_PER_MS, mouse_button, button_state);
+      }
+      
+      wlr_seat_pointer_notify_enter(instance->seat, view->surface->surface, transformed_local_pos_x, transformed_local_pos_y);
+      wlr_seat_pointer_notify_motion(instance->seat, message.timestamp / NS_PER_MS, transformed_local_pos_x, transformed_local_pos_y);
+      
+      if(scroll_amount != 0) {
+        wlr_seat_pointer_notify_axis(
+          instance->seat, message.timestamp / NS_PER_MS, scroll_orientation,
+          scroll_amount, discrete_scroll_amount, WLR_AXIS_SOURCE_WHEEL);
       }
 
       wlr_seat_pointer_notify_frame(instance->seat);
